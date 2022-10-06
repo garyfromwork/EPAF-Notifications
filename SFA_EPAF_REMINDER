@@ -1,0 +1,32 @@
+CREATE OR REPLACE PROCEDURE SFA_EPAF_REMINDER (RUNDATE IN DATE DEFAULT SYSDATE) AS 
+    lv_rundate        DATE := TO_DATE(rundate, 'dd-mon-yy');
+    NUMBER_OF_EPAFS     NUMBER := 0;
+    LV_DB_NAME          VARCHAR2(4);
+BEGIN
+    DBMS_OUTPUT.ENABLE(NULL);
+    SELECT  get_dbname(1)
+      INTO  LV_DB_NAME 
+      FROM  dual;
+    
+    select COUNT(*) INTO NUMBER_OF_EPAFS
+    from nobtran
+    where nobtran_trans_status_ind = 'P'
+    and nobtran_submission_date between TRUNC(lv_rundate, 'MM') and lv_rundate; -- current month
+    IF NUMBER_OF_EPAFS > 0 THEN
+        IF (LV_DB_NAME = 'PROD') THEN
+              utl_mail.send
+                    (sender        => 'SFADATA@sfasu.edu',
+                     recipients    => 'randy.laird@sfasu.edu',
+    --                 cc            => 'michalowde@sfasu.edu,thompsontammi@sfasu.edu,bmgoad@sfasu.edu',
+                     subject       => 'EPAFs To Be Processed', 
+                     message       => 'There are ' || NUMBER_OF_EPAFS || ' EPAFs awaiting approval between ' || TRUNC(lv_rundate, 'MM') || ' and ' || lv_rundate);
+            ELSE
+                 utl_mail.send
+                    (sender        => 'SFADATA@sfasu.edu',
+                     recipients    => 'randy.laird@sfasu.edu',
+    --                 cc            => 'michalowde@sfasu.edu,thompsontammi@sfasu.edu,bmgoad@sfasu.edu',
+                     subject       => 'EPAFs To Be Processed', 
+                     message       => 'There are ' || NUMBER_OF_EPAFS || ' EPAFs awaiting approval between ' || TRUNC(lv_rundate, 'MM') || ' and ' || lv_rundate);
+            END IF;
+    END IF;
+END SFA_EPAF_REMINDER;
