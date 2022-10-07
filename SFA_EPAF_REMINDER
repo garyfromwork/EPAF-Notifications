@@ -1,32 +1,48 @@
-CREATE OR REPLACE PROCEDURE SFA_EPAF_REMINDER (RUNDATE IN DATE DEFAULT SYSDATE) AS 
-    lv_rundate        DATE := TO_DATE(rundate, 'dd-mon-yy');
+CREATE OR REPLACE PROCEDURE SFA_EPAF_REMINDER AS 
+    lv_username         VARCHAR2(200);
+    LV_EMAIL            VARCHAR2(200);
     NUMBER_OF_EPAFS     NUMBER := 0;
     LV_DB_NAME          VARCHAR2(4);
+    
+    CURSOR GET_USERNAMES IS
+    SELECT DISTINCT NORROUT_RECIPIENT_USER_ID USERNAME
+    FROM NORROUT;
 BEGIN
     DBMS_OUTPUT.ENABLE(NULL);
     SELECT  get_dbname(1)
       INTO  LV_DB_NAME 
       FROM  dual;
     
-    select COUNT(*) INTO NUMBER_OF_EPAFS
-    from nobtran
-    where nobtran_trans_status_ind = 'P'
-    and nobtran_submission_date between TRUNC(lv_rundate, 'MM') and lv_rundate; -- current month
-    IF NUMBER_OF_EPAFS > 0 THEN
-        IF (LV_DB_NAME = 'PROD') THEN
-              utl_mail.send
-                    (sender        => 'SFADATA@sfasu.edu',
-                     recipients    => 'randy.laird@sfasu.edu',
-    --                 cc            => 'michalowde@sfasu.edu,thompsontammi@sfasu.edu,bmgoad@sfasu.edu',
-                     subject       => 'EPAFs To Be Processed', 
-                     message       => 'There are ' || NUMBER_OF_EPAFS || ' EPAFs awaiting approval between ' || TRUNC(lv_rundate, 'MM') || ' and ' || lv_rundate);
-            ELSE
-                 utl_mail.send
-                    (sender        => 'SFADATA@sfasu.edu',
-                     recipients    => 'randy.laird@sfasu.edu',
-    --                 cc            => 'michalowde@sfasu.edu,thompsontammi@sfasu.edu,bmgoad@sfasu.edu',
-                     subject       => 'EPAFs To Be Processed', 
-                     message       => 'There are ' || NUMBER_OF_EPAFS || ' EPAFs awaiting approval between ' || TRUNC(lv_rundate, 'MM') || ' and ' || lv_rundate);
-            END IF;
-    END IF;
+    FOR USER_ID IN GET_USERNAMES LOOP
+        select count(*) outstanding_epafs
+        INTO NUMBER_OF_EPAFS
+        from nobtran
+        inner join norrout
+        on norrout_transaction_no = nobtran_transaction_no
+        where nobtran_trans_status_ind = 'P'
+        and USER_ID.USERNAME = norrout_recipient_user_id;
+        
+         IF NUMBER_OF_EPAFS > 0 THEN
+            SELECT sfadata.f_sfa_get_email_from_userid(user_id.username) INTO LV_EMAIL from dual;
+            
+            IF (LV_DB_NAME = 'PROD') THEN
+                  utl_mail.send
+                        (sender        => 'SFADATA@sfasu.edu',
+                         recipients    => 'randy.laird@sfasu.edu',
+        --                 cc            => 'michalowde@sfasu.edu,thompsontammi@sfasu.edu,bmgoad@sfasu.edu',
+                         subject       => 'EPAFs To Be Processed - CC ' || LV_EMAIL, 
+                         message       => NUMBER_OF_EPAFS || ' EPAFs are pending your approval.'||CHR(13)||'Please review and take action to ensure that the EPAF process is completed in a timely manner.');
+                ELSE
+                     utl_mail.send
+                        (sender        => 'SFADATA@sfasu.edu',
+                         recipients    => 'randy.laird@sfasu.edu',
+        --                 cc            => 'michalowde@sfasu.edu,thompsontammi@sfasu.edu,bmgoad@sfasu.edu',
+                         subject       => 'EPAFs To Be Processed - CC ' || LV_EMAIL,  
+                         message       => NUMBER_OF_EPAFS || ' EPAFs are pending your approval.'||CHR(13)||'Please review and take action to ensure that the EPAF process is completed in a timely manner.');
+                END IF;
+        END IF;
+    END LOOP;
+EXCEPTION
+  WHEN NO_DATA_FOUND THEN
+    null;  
 END SFA_EPAF_REMINDER;
